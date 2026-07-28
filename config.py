@@ -1,23 +1,14 @@
 import os
 from dotenv import load_dotenv
 
-# .env 파일 로드
 load_dotenv()
 
 class Config:
-    """환경 설정 중앙 관리 (로컬 DB 방식 적용)"""
+    # 1. 현재 config.py 파일이 있는 폴더의 절대 위치를 파악
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. 그 폴더 위치에 엑셀 파일 이름을 딱 붙여줌
+    # 🚨 '음식데이터.xlsx' 부분을 깃허브에 올라간 실제 파일명과 똑같이(대소문자 포함) 바꿔주세요!
+    FOOD_DB_PATH = os.path.join(BASE_DIR, "음식데이터.xlsx")
     
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    FOOD_DB_PATH = os.getenv("FOOD_DB_PATH", "food_db.xlsx")
-
-    @classmethod
-    def validate(cls):
-        if not cls.OPENAI_API_KEY or cls.OPENAI_API_KEY == "your_openai_api_key_here":
-            print("⚠️ [경고] OPENAI_API_KEY가 설정되지 않았습니다. (자연어 처리 전까지는 무시 가능)")
-        
-        # DB 파일이 해당 경로에 실제로 있는지 미리 검사
-        if not os.path.exists(cls.FOOD_DB_PATH):
-            print(f"⚠️ [경고] DB 파일을 찾을 수 없습니다: {cls.FOOD_DB_PATH}")
-            print("   -> 농촌진흥청 엑셀 파일을 다운로드하여 해당 경로에 넣어주세요.")
-
-Config.validate()
