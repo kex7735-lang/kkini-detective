@@ -1,79 +1,76 @@
-from db_manager import FoodDBManager
+# nutrition_calculator.py
+
 from nlu_parser import NaturalLanguageParser
+from db_manager import FoodDBManager
 
 class NutritionCalculator:
     def __init__(self):
+        # 귀(Parser)와 눈(DB Manager)을 초기화
         self.nlu = NaturalLanguageParser()
         self.db = FoodDBManager()
-        
-        # 💡 [핵심 강화] 한국인 맞춤형 초정밀 단위 사전
-        self.unit_to_gram = {
-            "공기": 210, "개": 50, "인분": 200, "그램": 1, "g": 1, "ml": 1,
-            "마리": 800, "조각": 100,
-            "대접": 400, "국그릇": 300,    # 국/탕/면류
-            "컵": 200, "잔": 150,          # 물/음료류
-            "병": 360, "캔": 350,          # 주류/음료류 (소주 1병 기준)
-            "근": 600, "모": 300,          # 정육/두부
-            "숟가락": 15, "스푼": 15,      # 조미료/소스류
-            "봉지": 120                    # 라면/과자류
-        }
 
     def process_meal_record(self, text: str) -> dict:
-        parsed_data = self.nlu.parse_meal(text)
-        if not parsed_data or not parsed_data.get("items"):
-            return {"status": "error", "message": "음식 정보를 추출하지 못했습니다."}
+        """
+        사용자의 식사 기록을 입력받아 파싱, 검색, 계산을 총괄합니다.
+        """
+        # 1. NLU를 통해 문장에서 음식, 수량, 다중 검색 키워드를 추출
+        extracted = self.nlu.parse_meal(text)
+        
+        if not extracted["items"]:
+            return {"status": "error", "message": "문장에서 음식 정보를 추출하지 못했습니다."}
 
-        report = {
-            "status": "success",
-            "original_text": text,
-            "total_nutrition": {"칼로리": 0, "탄수화물": 0, "단백질": 0, "지방": 0},
-            "details": []
-        }
+        total_nutrition = {"칼로리": 0, "단백질": 0, "지방": 0, "탄수화물": 0}
+        details = []
 
-        for item in parsed_data["items"]:
-            food_name = item["food_name"]
-            quantity = item["quantity"]
-            unit = item["unit"]
+        # 2. 추출된 음식별로 DB 검색 및 계산 진행
+        for item in extracted["items"]:
+            # NLU가 만들어준 다중 키워드 리스트(search_keywords)로 DB 검색 시도
+            db_results = self.db.search_by_name(item["search_keywords"])
             
-            search_results = self.db.search_by_name(food_name)
-            
-            if not search_results:
-                report["details"].append({
-                    "food_name": food_name,
+            if not db_results:
+                # [핵심] 그물망 검색으로도 끝내 못 찾았으면, 에러를 내거나 0으로 치지 않고
+                # 'not_found' 상태로 저장하여 탐정이 나중에 추론하도록 함.
+                details.append({
+                    "input_name": item["input_name"],
                     "status": "not_found",
-                    "message": "DB에서 해당 음식을 찾을 수 없습니다."
+                    "quantity": item["quantity"],
+                    "unit": item["unit"]
                 })
-                continue
+            else:
+                # 검색 결과 중 가장 연관성 높은 1순위(보통 가장 이름이 짧은 기본 음식) 사용
+                best_match = db_results[0]
                 
-            db_food = search_results[0]
-            
-            gram_multiplier = self.unit_to_gram.get(unit, 100)
-            total_weight_g = quantity * gram_multiplier
-            
-            base_weight = db_food["1회제공량(g)"]
-            ratio = total_weight_g / base_weight if base_weight > 0 else 0
-            
-            calc_kcal = round(db_food["에너지(kcal)"] * ratio, 1)
-            calc_carbs = round(db_food["탄수화물(g)"] * ratio, 1)
-            calc_protein = round(db_food["단백질(g)"] * ratio, 1)
-            calc_fat = round(db_food["지방(g)"] * ratio, 1)
-            
-            report["details"].append({
-                "food_name": db_food["식품명"],
-                "input_name": food_name,
-                "섭취량": f"{quantity}{unit} ({total_weight_g}g)",
-                "nutrition": {
-                    "칼로리": calc_kcal, "탄수화물": calc_carbs, 
-                    "단백질": calc_protein, "지방": calc_fat
-                }
-            })
-            
-            report["total_nutrition"]["칼로리"] += calc_kcal
-            report["total_nutrition"]["탄수화물"] += calc_carbs
-            report["total_nutrition"]["단백질"] += calc_protein
-            report["total_nutrition"]["지방"] += calc_fat
+                # 사용자가 입력한 수량 비율 (기본 1인분/1개/1마리 = 1.0 비율)
+                ratio = item["quantity"]
+                
+                # 섭취량에 비례한 영양성분 계산 (반올림하여 소수점 첫째자리까지)
+                calories = round(best_match["에너지(kcal)"] * ratio, 1)
+                protein = round(best_match["단백질(g)"] * ratio, 1)
+                fat = round(best_match["지방(g)"] * ratio, 1)
+                carbs = round(best_match["탄수화물(g)"] * ratio, 1)
 
-        for key in report["total_nutrition"]:
-            report["total_nutrition"][key] = round(report["total_nutrition"][key], 1)
+                # 전체 영양 총합에 더함
+                total_nutrition["칼로리"] += calories
+                total_nutrition["단백질"] += protein
+                total_nutrition["지방"] += fat
+                total_nutrition["탄수화물"] += carbs
 
-        return report
+                # 계산 완료된 상세 내역 저장
+                details.append({
+                    "input_name": item["input_name"],
+                    "food_name": best_match["식품명"],
+                    "status": "found",
+                    "섭취량": f"{item['quantity']}{item['unit']}",
+                    "nutrition": {
+                        "칼로리": calories,
+                        "단백질": protein,
+                        "지방": fat,
+                        "탄수화물": carbs
+                    }
+                })
+
+        return {
+            "status": "success",
+            "total_nutrition": total_nutrition,
+            "details": details
+        }
