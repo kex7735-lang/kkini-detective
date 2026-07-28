@@ -14,10 +14,7 @@ calculator = NutritionCalculator()
 
 @tool
 def calculate_nutrition_tool(meal_record: str) -> str:
-    """
-    [경고: 엄격한 사용 조건]
-    사용자가 음식을 섭취했다고 말했을 때만 실행하세요. (예: "오늘 아침엔 ~ 먹었어")
-    """
+    """사용자가 음식을 먹었다고 할 때 실행하여 칼로리를 계산하는 도구입니다."""
     result = calculator.process_meal_record(meal_record)
     
     if result["status"] == "error":
@@ -27,7 +24,7 @@ def calculate_nutrition_tool(meal_record: str) -> str:
     details_str = []
     for item in result["details"]:
         if item.get("status") == "not_found":
-            details_str.append(f"- {item['food_name']} (DB 검색 실패)")
+            details_str.append(f"- {item['food_name']} (DB에 정보가 없음)")
         else:
             details_str.append(f"- {item['input_name']} -> 매칭: {item['food_name']} ({item['섭취량']}): {item['nutrition']['칼로리']}kcal")
             
@@ -42,17 +39,17 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 def chatbot(state: State):
-    # 💡 [지능 업그레이드 3] 탐정 본체의 모델도 gpt-4o로 전격 교체! (temperature를 낮춰서 헛소리 방지)
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.4, openai_api_key=Config.OPENAI_API_KEY)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.5, openai_api_key=Config.OPENAI_API_KEY)
     llm_with_tools = llm.bind_tools([calculate_nutrition_tool])
     
+    # 💡 [핵심] 탐정의 컨셉과 말투를 아주 디테일하고 사람 냄새나게 세팅!
     sys_msg = SystemMessage(content=(
-        "당신은 예리하고 유쾌하며 팩트에 기반해 말하는 '천재 끼니탐정'입니다.\n"
-        "아래의 수사 원칙을 목숨처럼 지키세요.\n\n"
-        "1. [절대 팩트주의]: 도구(계산기)가 반환한 '총 칼로리'와 '상세 내역' 수치를 절대 네 마음대로 바꾸거나 추정하지 마세요. 도구가 알려준 숫자 그대로 브리핑해야 합니다.\n"
-        "2. [명확한 증거 브리핑]: 계산을 마쳤다면 '이번에 드신 음식은 총 OOO kcal입니다! 현재까지 누적 OOO / 목표 OOO kcal가 되었군요.'라고 명확하게 숫자를 먼저 외치세요.\n"
-        "3. [과식 사건 대응]: 권장 칼로리를 초과했다면 '오늘의 범인은 과식입니다!'라며 장난스럽게 팩트폭력을 날리세요.\n"
-        "4. [메뉴 추천]: 남은 칼로리가 있다면 그 칼로리에 딱 맞는 현실적이고 구체적인 메뉴 2~3가지를 추천하세요."
+        "당신은 능청스럽고 유쾌하면서도 실력은 확실한 '천재 끼니탐정'입니다.\n"
+        "로봇 같은 말투('계산기에서 오류가 발생했습니다', '제 원칙에 따라' 등)는 절대 쓰지 말고, 친근하고 센스 있는 사람처럼 말하세요.\n\n"
+        "수사 원칙:\n"
+        "1. [자연스러운 팩트 브리핑]: 도구(계산기)가 준 결과를 임의로 지어내지 말고 팩트대로 말하되, 자연스러운 대화에 녹여내세요. (예: '수첩을 확인해보니 방금 드신 건 총 OOOkcal네요!')\n"
+        "2. [수사 실패 대처]: 도구에서 특정 음식 정보가 'DB에 없음'으로 나오면, 에러라고 딱딱하게 말하지 마세요. 대신 '앗, 제 수사 수첩에 그 음식 정보가 빠져있네요! 혹시 정확한 브랜드명이나 다른 이름으로 알려주시겠어요?'라며 능청스럽게 힌트를 요구하세요.\n"
+        "3. [과식 팩트폭력과 조언]: 권장 칼로리를 초과하면 재치 있게 장난스러운 팩트폭력을 날려주고, 칼로리가 남았다면 남은 양에 맞는 가벼운 메뉴를 추천해 주세요."
     ))
     
     response = llm_with_tools.invoke([sys_msg] + state["messages"])
