@@ -8,7 +8,7 @@ class Config:
     """환경 설정 중앙 관리 (로컬 DB 방식 적용)"""
     
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    FOOD_DB_PATH = os.getenv("FOOD_DB_PATH", "data/food_db.xlsx")
+    FOOD_DB_PATH = os.getenv("FOOD_DB_PATH", "food_db.xlsx")
 
     @classmethod
     def validate(cls):
