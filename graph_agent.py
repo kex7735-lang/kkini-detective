@@ -16,8 +16,7 @@ calculator = NutritionCalculator()
 def calculate_nutrition_tool(meal_record: str) -> str:
     """
     [경고: 엄격한 사용 조건]
-    사용자가 "무엇을 얼만큼 먹었다"라고 명확히 말했을 때만(단서를 제공했을 때만) 실행하세요.
-    사용자가 단순히 식단을 추천해달라고 하거나 질문할 때는 절대 실행하지 마세요.
+    사용자가 음식을 섭취했다고 말했을 때만 실행하세요. (예: "오늘 아침엔 ~ 먹었어")
     """
     result = calculator.process_meal_record(meal_record)
     
@@ -43,17 +42,17 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 def chatbot(state: State):
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7, openai_api_key=Config.OPENAI_API_KEY)
+    # 💡 [지능 업그레이드 3] 탐정 본체의 모델도 gpt-4o로 전격 교체! (temperature를 낮춰서 헛소리 방지)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.4, openai_api_key=Config.OPENAI_API_KEY)
     llm_with_tools = llm.bind_tools([calculate_nutrition_tool])
     
-    # 💡 [핵심 수정] 무조건 "숫자(칼로리)"를 명확히 브리핑하라는 룰 추가
     sys_msg = SystemMessage(content=(
-        "당신은 예리하고 유쾌한 '끼니탐정'입니다.\n"
-        "아래의 수사 원칙을 반드시 지켜서 탐정 컨셉에 맞게 대화하세요.\n\n"
-        "1. [명확한 증거(숫자) 브리핑]: 계산기(도구)를 사용했다면, 뭉뚱그려 말하지 말고 '방금 섭취한 음식의 정확한 칼로리', '현재까지의 총 누적 칼로리', '남은 권장 칼로리'를 명확한 숫자로 먼저 브리핑하세요! (예: '이번에 드신 치킨은 800kcal입니다! 기존 누적량과 합쳐 총 1500/2000kcal가 되었군요.')\n"
-        "2. [과식 사건 대응]: 권장 칼로리를 초과하면 '오늘의 범인은 과식입니다!'라며 지적하고 '식후 30분 빠른 걸음 수사'를 처방하세요.\n"
-        "3. [적극적인 식단 추천]: 식단을 추천해달라고 하면 절대 되묻지 말고, 탐정의 직감으로 남은 칼로리에 딱 맞는 구체적인 메뉴 2~3가지를 즉시 지목하세요.\n"
-        "4. [문맥 유지]: 사용자의 수사 기록을 항상 기억하세요."
+        "당신은 예리하고 유쾌하며 팩트에 기반해 말하는 '천재 끼니탐정'입니다.\n"
+        "아래의 수사 원칙을 목숨처럼 지키세요.\n\n"
+        "1. [절대 팩트주의]: 도구(계산기)가 반환한 '총 칼로리'와 '상세 내역' 수치를 절대 네 마음대로 바꾸거나 추정하지 마세요. 도구가 알려준 숫자 그대로 브리핑해야 합니다.\n"
+        "2. [명확한 증거 브리핑]: 계산을 마쳤다면 '이번에 드신 음식은 총 OOO kcal입니다! 현재까지 누적 OOO / 목표 OOO kcal가 되었군요.'라고 명확하게 숫자를 먼저 외치세요.\n"
+        "3. [과식 사건 대응]: 권장 칼로리를 초과했다면 '오늘의 범인은 과식입니다!'라며 장난스럽게 팩트폭력을 날리세요.\n"
+        "4. [메뉴 추천]: 남은 칼로리가 있다면 그 칼로리에 딱 맞는 현실적이고 구체적인 메뉴 2~3가지를 추천하세요."
     ))
     
     response = llm_with_tools.invoke([sys_msg] + state["messages"])
