@@ -7,7 +7,7 @@ class FoodItem(BaseModel):
         description="사용자가 말한 원본 음식 이름 (예: 공기밥, 뿌링클 치킨, 마라탕)"
     )
     search_keywords: list[str] = Field(
-        description="DB 검색을 위한 키워드 목록. 1순위: 구체적인 정식 명칭, 2순위: 핵심 명사, 3순위: 가장 포괄적인 단어 (예: ['멥쌀밥', '쌀밥', '밥'])"
+        description="DB 검색을 위한 키워드 목록. 1순위: 정식 명칭, 2순위: 핵심 명사, 3순위: 포괄적 단어 (예: ['멥쌀밥', '쌀밥', '밥'])"
     )
     quantity: float = Field(
         description="수량. '반', '조금' 등은 0.5로 변환. 언급 없으면 1.0", 
@@ -38,7 +38,7 @@ class NaturalLanguageParser:
                 "1. input_name: 사용자가 말한 그대로의 이름\n"
                 "2. search_keywords: 엑셀 DB에서 찾을 수 있도록 구체적인 정식 명칭부터 "
                 "포괄적 단어까지 3~4개 정도의 리스트를 작성하세요.\n"
-                "   (예: '치킨 반마리랑 공기밥 반개' -> 치킨은 ['프라이드치킨', '후라이드치킨', '치킨'], 밥은 ['멥쌀밥', '쌀밥', '밥'])\n"
+                "   (예: '치킨 반마리랑 공기밥 반개' -> 치킨은 ['프라이드치킨', '치킨'], 밥은 ['멥쌀밥', '쌀밥', '밥'])\n"
                 f"문장: {text}"
             )
             result = self.structured_llm.invoke(prompt)
