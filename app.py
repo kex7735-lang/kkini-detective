@@ -42,7 +42,6 @@ if "messages" not in st.session_state:
 if "daily_kcal" not in st.session_state:
     st.session_state.daily_kcal = 0.0
 
-# --- 💡 [기능 1] 4대 영양소 세션 상태 추가 ---
 if "total_protein" not in st.session_state:
     st.session_state.total_protein = 0.0
 if "total_fat" not in st.session_state:
@@ -99,7 +98,6 @@ with st.sidebar:
         st.divider()
         st.title("📊 오늘의 영양 현황")
         
-        # --- 💡 [기능 2] 빨간색 듀얼 바(Bar) 교체 ---
         current_cal = st.session_state.daily_kcal
         goal_cal = st.session_state.target_kcal
         
@@ -117,14 +115,12 @@ with st.sidebar:
             else:
                 st.warning("주의! 권장량에 가까워집니다. ⚠️")
         else:
-            # 100% 꽉 찬 초록색 기본 바
             st.markdown(f"""
             <div style="background-color: #e6e6e6; border-radius: 10px; width: 100%; height: 25px; margin-bottom: 5px;">
                 <div style="background-color: #4CAF50; width: 100%; height: 25px; border-radius: 10px;"></div>
             </div>
             """, unsafe_allow_html=True)
             
-            # 초과분을 나타내는 빨간색 듀얼 바
             over_percentage = min(((current_cal - goal_cal) / goal_cal) * 100, 100)
             st.markdown(f"""
             <div style="background-color: #e6e6e6; border-radius: 10px; width: 100%; height: 25px; margin-bottom: 5px;">
@@ -133,7 +129,6 @@ with st.sidebar:
             """, unsafe_allow_html=True)
             st.error(f"🚨 권장량을 {current_cal - goal_cal:,.1f} kcal 초과했습니다!")
 
-        # --- 💡 [기능 1 수정] 탄/단/지 대시보드를 사이드바에 맞게 미니멀하게 디자인 ---
         st.markdown(f"""
         <div style="display: flex; justify-content: space-around; text-align: center; font-size: 0.9rem; background-color: #f0f2f6; padding: 15px 5px; border-radius: 10px; margin-top: 10px;">
             <div>
@@ -164,7 +159,6 @@ with st.sidebar:
         st.session_state.thread_id = str(uuid.uuid4())
         st.rerun()
 
-# 3. 메인 화면
 col_img, col_txt = st.columns([1, 4], vertical_alignment="center")
 with col_img:
     st.image(AI_AVATAR, width=120)
@@ -180,7 +174,6 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else AI_AVATAR):
         st.markdown(msg["content"])
 
-# 바다코끼리 연산자(:=) 완벽 적용
 if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 (예: 치킨 반 마리 먹었어)"):
     
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -190,7 +183,6 @@ if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 
     with st.chat_message("assistant", avatar=AI_AVATAR):
         loading_overlay = st.empty()
         
-        # 💡 [핵심 수정 2] 로딩 텍스트 안에 남아있던 이모지도 완벽하게 제거!
         loading_overlay.markdown(f"""
             <style>
             .loading-screen {{
@@ -219,16 +211,15 @@ if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 
             </div>
         """, unsafe_allow_html=True)
 
-        # --- 💡 [기능 3] 탐정 귓속말 로직 이식 ---
         config = {"configurable": {"thread_id": st.session_state.thread_id}}
         
+        # 💡 [핵심 수정] "식단 짜줘" 등에는 0kcal로 뱉어내서 앱 게이지를 건드리지 않게 지시
         hidden_instruction = (
             f"[시스템 메모: 당신은 '끼니탐정'입니다. 내 이름은 {st.session_state.user_name}이고, 오늘 하루 권장 칼로리는 {st.session_state.target_kcal}kcal야. "
-            f"그리고 방금 전까지 나의 누적 섭취량은 {st.session_state.daily_kcal}kcal였어. 계산기를 돌린 후 수사 결과를 브리핑해줘.]\n\n"
+            f"그리고 방금 전까지 나의 누적 섭취량은 {st.session_state.daily_kcal}kcal였어.]\n\n"
             f"나의 말: {prompt}\n\n"
-            "(시스템 중요 지시사항: 브리핑 맨 마지막 줄에 반드시 아래 양식을 토씨 하나 틀리지 말고 출력하세요. "
-            "이 값은 누적값이 아니라 '방금 먹은 음식만의' 영양소 합이어야 합니다.\n"
-            "양식: [이번 식사: 000kcal, 단백질: 00g, 지방: 00g, 탄수화물: 00g])"
+            "(시스템 중요 지시사항: 만약 사용자가 '실제로 먹은 음식'을 기록한 거라면 맨 마지막 줄에 반드시 `[이번 식사: 000kcal, 단백질: 00g, 지방: 00g, 탄수화물: 00g]` 양식으로 '방금 먹은 수치만' 출력하세요.\n"
+            "🚨주의: 하지만 만약 사용자가 '식단을 짜달라'고 하거나, 아직 먹지 않은 음식에 대해 '질문'한 거라면 미래형/설명형으로 추천만 해주고, 누적 게이지가 오르지 않도록 맨 마지막 줄에 무조건 `[이번 식사: 0kcal, 단백질: 0g, 지방: 0g, 탄수화물: 0g]` 이라고 적으세요!)"
         )
         
         inputs = {"messages": [HumanMessage(content=hidden_instruction)]}
@@ -241,7 +232,6 @@ if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 
             elif "tools" in event:
                 is_tool_used = True
 
-        # 정규식을 통한 영양소 추출 및 누적 (쉼표 제거 포함)
         match = re.search(r'\[이번 식사:\s*([0-9,.]+)\s*kcal,\s*단백질:\s*([0-9,.]+)\s*g,\s*지방:\s*([0-9,.]+)\s*g,\s*탄수화물:\s*([0-9,.]+)\s*g\]', final_response)
         
         if match:
@@ -250,13 +240,11 @@ if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 
             st.session_state.total_fat += float(match.group(3).replace(',', ''))
             st.session_state.total_carbs += float(match.group(4).replace(',', ''))
             
-            # 소수점 첫째 자리까지만 유지
             st.session_state.daily_kcal = round(st.session_state.daily_kcal, 1)
             st.session_state.total_protein = round(st.session_state.total_protein, 1)
             st.session_state.total_fat = round(st.session_state.total_fat, 1)
             st.session_state.total_carbs = round(st.session_state.total_carbs, 1)
 
-        # 사용자 화면에 보여줄 때는 지저분한 '[이번 식사: ...]' 꼬리표를 잘라내고 렌더링
         clean_response = re.sub(r'\[이번 식사:.*?\]', '', final_response).strip()
 
         loading_overlay.empty()
