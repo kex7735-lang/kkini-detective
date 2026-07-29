@@ -1,5 +1,3 @@
-# graph_agent.py
-
 from typing import Annotated, TypedDict
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
@@ -8,6 +6,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver 
+import json
 
 from nutrition_calculator import NutritionCalculator
 from config import Config
@@ -17,37 +16,47 @@ calculator = NutritionCalculator()
 @tool
 def calculate_nutrition_tool(meal_record: str) -> str:
     """
-    사용자가 음식을 먹었다고 할 때 실행하여 칼로리를 계산하는 도구입니다.
-    (예: "치킨 반마리랑 밥 먹었어")
+    사용자가 음식을 먹었다고 할 때 실행하여 영양 정보를 확인하는 도구입니다.
     """
     result = calculator.process_meal_record(meal_record)
     
     if result["status"] == "error":
         return f"계산 에러 발생: {result.get('message')}"
         
-    total = result["total_nutrition"]
     details_str = []
     has_missing_food = False
     
     for item in result["details"]:
         if item.get("status") == "not_found":
             has_missing_food = True
-            # [핵심] DB에 없는 음식은 탐정(LLM)이 직접 추정하라고 꼬리표를 달아줌
-            details_str.append(f"- {item['input_name']} (DB 검색 실패: 탐정의 자체 지식으로 칼로리를 추정하여 총합에 더하세요!)")
-        else:
-            details_str.append(f"- {item['input_name']} -> 매칭: {item['food_name']} ({item['섭취량']}): {item['nutrition']['칼로리']}kcal")
-            
+            details_str.append(f"\n[용의자 없음] '{item['input_name']}' ({item['quantity']}{item['unit']})")
+            details_str.append("- 엑셀 DB에서 아예 단서를 찾지 못했습니다! 탐정의 자체 지식으로 추론해야 합니다.")
+        elif item.get("status") == "candidates_found":
+            details_str.append(f"\n[용의자 명단] '{item['input_name']}' ({item['quantity']}{item['unit']})")
+            for i, cand in enumerate(item["candidates"]):
+                nutri = cand['nutrition']
+                details_str.append(
+                    f"  {i+1}번 후보: {cand['식품명']} (기준 {cand['기준량']}) -> "
+                    f"칼로리:{nutri['칼로리']}kcal, 단백질:{nutri['단백질']}g, 지방:{nutri['지방']}g, 탄수화물:{nutri['탄수화물']}g"
+                )
+
     details_joined = "\n".join(details_str)
     
-    # 엑셀에서 못 찾은 음식이 있을 때 탐정에게 내리는 비밀 지령
-    instruction = ""
-    if has_missing_food:
-        instruction = "\n\n🚨 [탐정 비밀 지령]: 엑셀 DB에 없는 음식이 있습니다! 에러 났다고 하거나 당황한 티 내지 말고, 당신의 똑똑한 자체 지식을 발휘해 해당 음식의 칼로리를 합리적으로 추리한 뒤 전체 칼로리에 합산해서 브리핑하세요."
+    instruction = (
+        "\n\n🚨 [탐정 지시사항]\n"
+        "1. [후보 선택]: 각 음식의 '용의자 명단'을 보고 문맥상 가장 적합한 1번 후보(보통 가장 이름이 짧은 기본 음식)를 '당신이 직접 선택'하세요. "
+        "(예를 들어 사용자가 '치킨'을 먹었다면 치킨너겟이 아니라 프라이드치킨을 고르세요!)\n"
+        "2. [직접 계산]: 당신이 선택한 음식들의 칼로리를 모두 더해서 '오늘 먹은 총 칼로리'를 스스로 계산하세요.\n"
+    )
     
+    if has_missing_food:
+        instruction += "3. [자체 추론]: DB에 없는 음식은 당황하지 말고, 당신의 자체 지식으로 합리적인 칼로리(1인분 기준)를 추정해서 총합에 꼭 포함시키세요!\n"
+        
+    instruction += "4. [자연스러운 보고]: 기계처럼 '몇 번 후보를 선택했습니다'라고 말하지 말고, 쿨하고 자연스럽게 'ㅇㅇ와 ㅁㅁ를 드셨군요! 총 000kcal입니다'라고 브리핑하세요."
+
     return (
-        f"[시스템 계산 결과]\n"
-        f"현재까지 DB에서 확인된 총 칼로리: {total['칼로리']}kcal\n"
-        f"상세 내역:\n{details_joined}"
+        f"[시스템 계산 서류철]\n"
+        f"{details_joined}"
         f"{instruction}"
     )
 
@@ -55,16 +64,17 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
 
 def chatbot(state: State):
-    # 💡 융통성을 발휘하고 찰진 드립을 칠 수 있도록 temperature를 0.6으로 설정
+    # 융통성 있는 대화를 위해 온도(temperature) 상향
     llm = ChatOpenAI(model="gpt-4o", temperature=0.6, openai_api_key=Config.OPENAI_API_KEY)
     llm_with_tools = llm.bind_tools([calculate_nutrition_tool])
     
     sys_msg = SystemMessage(content=(
         "당신은 능청스럽고 유쾌하며 지식이 풍부한 '천재 끼니탐정'입니다.\n\n"
         "[수사 원칙]\n"
-        "1. [자연스러운 브리핑]: 도구(계산기)가 넘겨준 데이터를 바탕으로 자연스럽게 대화하세요. 로봇 같은 기계식 말투('도구 결과에 따르면', '계산기 오류입니다')는 절대 금지입니다.\n"
-        "2. [탐정의 폭풍 추론 💡]: 만약 시스템이 'DB 검색 실패'라고 알려준 음식이 있다면, '흠, 마라탕은 공공 DB 수첩엔 없는 최신 용의자군요! 하지만 제 데이터에 따르면...' 이라며 능청스럽게 자체 추정치를 꺼내어 전체 칼로리에 더해서 대답하세요.\n"
-        "3. [팩트폭력과 조언]: 유쾌하게 대화를 이끌어주되, 전체 칼로리가 높으면 장난스럽게 과식을 지적하고 가벼운 식단 조언을 건네주세요."
+        "1. 도구(계산기)가 넘겨준 서류철을 보고 '가장 상식적인 진짜 음식'을 직접 골라내세요.\n"
+        "2. 선택한 음식들의 영양성분과 당신이 추론한 음식을 합쳐서 최종 브리핑을 완성하세요.\n"
+        "3. 로봇 같은 기계식 말투('서류철에 따르면', '도구의 결과')는 절대 금지입니다.\n"
+        "4. 유쾌하게 대화를 이끌어주되, 전체 칼로리가 높으면 장난스럽게 과식을 지적해주세요."
     ))
     
     response = llm_with_tools.invoke([sys_msg] + state["messages"])
