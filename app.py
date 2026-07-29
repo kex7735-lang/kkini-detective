@@ -133,12 +133,26 @@ with st.sidebar:
             """, unsafe_allow_html=True)
             st.error(f"🚨 권장량을 {current_cal - goal_cal:,.1f} kcal 초과했습니다!")
 
-        # --- 💡 [기능 1] 탄/단/지 대시보드 출력 ---
-        st.write("---")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("🍚 탄수화물", f"{st.session_state.total_carbs:,.1f} g")
-        col2.metric("🥩 단백질", f"{st.session_state.total_protein:,.1f} g")
-        col3.metric("🧈 지방", f"{st.session_state.total_fat:,.1f} g")
+        # --- 💡 [기능 1 수정] 탄/단/지 대시보드를 사이드바에 맞게 미니멀하게 디자인 ---
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-around; text-align: center; font-size: 0.9rem; background-color: #f0f2f6; padding: 15px 5px; border-radius: 10px; margin-top: 10px;">
+            <div>
+                <span style="font-size: 1.3rem;">🍚</span><br>
+                <span style="color: #555; font-weight: bold; font-size: 0.85rem;">탄수화물</span><br>
+                <span style="font-size: 1.1rem; color: #2C3E50; font-weight: 900;">{st.session_state.total_carbs:,.1f}g</span>
+            </div>
+            <div>
+                <span style="font-size: 1.3rem;">🥩</span><br>
+                <span style="color: #555; font-weight: bold; font-size: 0.85rem;">단백질</span><br>
+                <span style="font-size: 1.1rem; color: #2C3E50; font-weight: 900;">{st.session_state.total_protein:,.1f}g</span>
+            </div>
+            <div>
+                <span style="font-size: 1.3rem;">🧈</span><br>
+                <span style="color: #555; font-weight: bold; font-size: 0.85rem;">지방</span><br>
+                <span style="font-size: 1.1rem; color: #2C3E50; font-weight: 900;">{st.session_state.total_fat:,.1f}g</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.divider()
     if st.button("🔄 새로운 대화 (초기화)"):
