@@ -78,8 +78,8 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 사용자 입력 처리
-if prompt = st.chat_input("오늘 어떤 음식을 드셨나요? (예: 치킨 반마리에 콜라 한 잔 먹었어)"):
+# 사용자 입력 처리 (🚨 여기서 = 를 := 로 수정했습니다!)
+if prompt := st.chat_input("오늘 어떤 음식을 드셨나요? (예: 치킨 반마리에 콜라 한 잔 먹었어)"):
     # 화면에 사용자 메시지 표시
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
