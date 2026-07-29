@@ -1,193 +1,126 @@
 import streamlit as st
-import uuid
-import time
 import re
-import base64
-from langchain_core.messages import HumanMessage
+import uuid
 from graph_agent import nutrition_agent_app
 
-AI_AVATAR = "detective.png"
+# ---------------------------------------------------------
+# 1. 페이지 설정 및 초기화
+# ---------------------------------------------------------
+st.set_page_config(page_title="천재 끼니탐정", page_icon="🕵️‍♂️", layout="centered")
 
-# 💡 [핵심 수정 1] 브라우저 탭 아이콘(page_icon)에서도 이모지를 빼고 커스텀 이미지 변수로 대체!
-# 주의: st.set_page_config는 변수 선언보다 아래에 있어야 하므로 위치를 살짝 내렸습니다.
-st.set_page_config(page_title="끼니탐정", page_icon=AI_AVATAR, layout="centered")
-
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
-    
-    .title-font {
-        font-family: 'Jua', sans-serif;
-        font-size: 3.5rem;
-        color: #2C3E50;
-        margin: 0;
-        padding-top: 15px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-@st.cache_data
-def get_base64_image(image_path):
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
-
-try:
-    detective_b64 = get_base64_image(AI_AVATAR)
-except:
-    detective_b64 = ""
-
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
+# 대화 기록 및 영양소 누적 상태 저장
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "daily_kcal" not in st.session_state:
-    st.session_state.daily_kcal = 0.0
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
 
-if "profile_set" not in st.session_state:
-    st.session_state.profile_set = False
-if "show_settings" not in st.session_state:
-    st.session_state.show_settings = True  
-    
-if "user_name" not in st.session_state: st.session_state.user_name = "사용자"
-if "gender" not in st.session_state: st.session_state.gender = "남성"
-if "age" not in st.session_state: st.session_state.age = 30
-if "height" not in st.session_state: st.session_state.height = 170.0
-if "weight" not in st.session_state: st.session_state.weight = 65.0
-if "target_kcal" not in st.session_state: st.session_state.target_kcal = 2000.0
+# 4대 영양소 세션 상태 초기화
+if "total_calories" not in st.session_state:
+    st.session_state.total_calories = 0.0
+if "total_protein" not in st.session_state:
+    st.session_state.total_protein = 0.0
+if "total_fat" not in st.session_state:
+    st.session_state.total_fat = 0.0
+if "total_carbs" not in st.session_state:
+    st.session_state.total_carbs = 0.0
 
-with st.sidebar:
-    if not st.session_state.profile_set or st.session_state.show_settings:
-        st.title("⚙️ 내 프로필 설정")
-        name = st.text_input("이름", value=st.session_state.user_name)
-        
-        gender_index = 0 if st.session_state.gender == "남성" else 1
-        gender = st.selectbox("성별", ["남성", "여성"], index=gender_index)
-        
-        age = st.number_input("나이 (만)", min_value=10, max_value=100, value=st.session_state.age)
-        height = st.number_input("키 (cm)", min_value=100.0, max_value=250.0, value=st.session_state.height, step=1.0)
-        weight = st.number_input("몸무게 (kg)", min_value=30.0, max_value=200.0, value=st.session_state.weight, step=1.0)
-        
-        if st.button("프로필 저장 및 닫기", type="primary"):
-            st.session_state.user_name = name
-            st.session_state.gender = gender
-            st.session_state.age = age
-            st.session_state.height = height
-            st.session_state.weight = weight
-            
-            if gender == "남성":
-                bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5
-            else:
-                bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161
-                
-            st.session_state.target_kcal = round(bmr * 1.2)
-            st.session_state.profile_set = True
-            st.session_state.show_settings = False 
-            st.rerun()
-    else:
-        if st.button("⚙️ 개인정보 수정하기"):
-            st.session_state.show_settings = True
-            st.rerun()
+# ---------------------------------------------------------
+# 2. UI 대시보드 렌더링 (칼로리 듀얼 바 & 탄단지)
+# ---------------------------------------------------------
+st.title("🕵️‍♂️ 천재 끼니탐정")
+st.caption("먹은 음식을 말해주시면, 숨겨진 칼로리와 영양소를 끝까지 추적해 냅니다!")
 
-    if st.session_state.profile_set:
-        st.divider()
-        st.title("📊 오늘의 영양 현황")
-        progress = min(st.session_state.daily_kcal / st.session_state.target_kcal, 1.0) if st.session_state.target_kcal > 0 else 0
-        
-        if progress < 0.8:
-            st.progress(progress)
-            st.success(f"✅ 누적 섭취량: **{st.session_state.daily_kcal}** / {st.session_state.target_kcal} kcal (여유)")
-        elif progress <= 1.0:
-            st.progress(progress)
-            st.warning(f"⚠️ 누적 섭취량: **{st.session_state.daily_kcal}** / {st.session_state.target_kcal} kcal (주의)")
-        else:
-            st.progress(1.0)
-            st.error(f"🚨 누적 섭취량: **{st.session_state.daily_kcal}** / {st.session_state.target_kcal} kcal (초과!)")
+GOAL_CALORIES = 2000.0  # 하루 권장 목표 칼로리
+current_cal = st.session_state.total_calories
 
-    st.divider()
-    if st.button("🔄 새로운 대화 (초기화)"):
-        st.session_state.messages = []
-        st.session_state.daily_kcal = 0.0
-        st.session_state.thread_id = str(uuid.uuid4())
-        st.rerun()
+st.write("---")
+st.write(f"📊 **오늘의 누적 칼로리:** {current_cal:,.1f} / {GOAL_CALORIES:,.1f} kcal")
 
-# 3. 메인 화면
-col_img, col_txt = st.columns([1, 4], vertical_alignment="center")
-with col_img:
-    st.image(AI_AVATAR, width=120)
-with col_txt:
-    st.markdown('<h1 class="title-font">끼니탐정</h1>', unsafe_allow_html=True)
-
-if st.session_state.profile_set:
-    st.info(f"🎯 **{st.session_state.user_name}**님의 하루 권장 칼로리는 **{st.session_state.target_kcal} kcal** 입니다.")
+# [핵심] 칼로리 초과 시 빨간색 게이지가 새로 차오르는 커스텀 UI
+if current_cal <= GOAL_CALORIES:
+    percentage = min((current_cal / GOAL_CALORIES) * 100, 100)
+    st.markdown(f"""
+    <div style="background-color: #e6e6e6; border-radius: 10px; width: 100%; height: 25px; margin-bottom: 20px;">
+        <div style="background-color: #4CAF50; width: {percentage}%; height: 25px; border-radius: 10px; transition: 0.5s;"></div>
+    </div>
+    """, unsafe_allow_html=True)
 else:
-    st.caption("👈 왼쪽 사이드바에서 프로필을 설정하면 끼니탐정의 맞춤형 수사가 시작됩니다.")
+    # 1. 100% 꽉 찬 초록색 기본 바
+    st.markdown(f"""
+    <div style="background-color: #e6e6e6; border-radius: 10px; width: 100%; height: 25px; margin-bottom: 5px;">
+        <div style="background-color: #4CAF50; width: 100%; height: 25px; border-radius: 10px;"></div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 2. 초과분을 나타내는 빨간색 듀얼 바
+    over_percentage = min(((current_cal - GOAL_CALORIES) / GOAL_CALORIES) * 100, 100)
+    st.markdown(f"""
+    <div style="background-color: #e6e6e6; border-radius: 10px; width: 100%; height: 25px; margin-bottom: 5px;">
+        <div style="background-color: #F44336; width: {over_percentage}%; height: 25px; border-radius: 10px; transition: 0.5s;"></div>
+    </div>
+    <p style="color: #F44336; font-size: 14px; font-weight: bold; margin-bottom: 20px;">
+        ⚠️ 권장 칼로리를 {current_cal - GOAL_CALORIES:,.1f} kcal 초과했습니다! 과식 탐정 출동 대기 중! 🚨
+    </p>
+    """, unsafe_allow_html=True)
 
+# 3대 영양소 표시 (탄수화물, 지방, 단백질)
+col1, col2, col3 = st.columns(3)
+col1.metric("🍚 탄수화물", f"{st.session_state.total_carbs:,.1f} g")
+col2.metric("🥩 단백질", f"{st.session_state.total_protein:,.1f} g")
+col3.metric("🧈 지방", f"{st.session_state.total_fat:,.1f} g")
+st.write("---")
+
+# ---------------------------------------------------------
+# 3. 채팅 UI 및 에이전트 연동
+# ---------------------------------------------------------
+# 기존 대화 기록 출력
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else AI_AVATAR):
+    with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("사건 단서(식사 기록)를 입력해 주세요 (예: 치킨 반 마리 먹었어)"):
-    
+# 사용자 입력 처리
+if prompt = st.chat_input("오늘 어떤 음식을 드셨나요? (예: 치킨 반마리에 콜라 한 잔 먹었어)"):
+    # 화면에 사용자 메시지 표시
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
+    with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar=AI_AVATAR):
-        loading_overlay = st.empty()
-        
-        # 💡 [핵심 수정 2] 로딩 텍스트 안에 남아있던 이모지도 완벽하게 제거!
-        loading_overlay.markdown(f"""
-            <style>
-            .loading-screen {{
-                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); 
-                z-index: 99999; display: flex; flex-direction: column;
-                align-items: center; justify-content: center;
-            }}
-            .detective-img {{
-                width: 220px; 
-                border-radius: 50%;
-                margin-bottom: 25px;
-                box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
-                animation: float 2s ease-in-out infinite;
-            }}
-            @keyframes float {{
-                0% {{ transform: translateY(0px); }}
-                50% {{ transform: translateY(-15px); }}
-                100% {{ transform: translateY(0px); }}
-            }}
-            .loading-text {{ color: white; font-size: 1.3rem; font-weight: 500; margin-top: 10px; }}
-            </style>
-            <div class="loading-screen">
-                <img src="data:image/png;base64,{detective_b64}" class="detective-img">
-                <div class="loading-text">끼니탐정이 사건 단서를 분석하고 있습니다...</div>
-            </div>
-        """, unsafe_allow_html=True)
+    with st.chat_message("assistant"):
+        with st.spinner("수첩을 뒤적이며 단서를 찾는 중..."):
+            
+            # [핵심] 탐정이 영양소를 정확히 뱉어내도록 시스템 몰래 지령을 추가합니다.
+            hidden_instruction = (
+                f"{prompt}\n\n"
+                "(시스템 지시사항: 브리핑 맨 마지막 줄에 반드시 아래 양식을 토씨 하나 틀리지 말고 출력하세요. "
+                "이 값은 누적값이 아니라 '방금 먹은 음식만의' 영양소 합이어야 합니다.\n"
+                "양식: [이번 식사: 000kcal, 단백질: 00g, 지방: 00g, 탄수화물: 00g])"
+            )
 
-        config = {"configurable": {"thread_id": st.session_state.thread_id}}
-        
-        context_prompt = f"[시스템 메모: 당신은 '끼니탐정'입니다. 내 이름은 {st.session_state.user_name}이고, 오늘 하루 권장 칼로리는 {st.session_state.target_kcal}kcal야. 그리고 방금 전까지 나의 누적 섭취량은 {st.session_state.daily_kcal}kcal였어. 계산기를 돌린 후, 기존 누적량에 방금 먹은 칼로리를 더해서 수사 결과를 숫자로 명확히 브리핑해줘.]\n\n나의 말: {prompt}"
-        
-        inputs = {"messages": [HumanMessage(content=context_prompt)]}
-        final_response = ""
-        is_tool_used = False
-        
-        for event in nutrition_agent_app.stream(inputs, config=config, stream_mode="updates"):
-            if "chatbot" in event:
-                final_response = event["chatbot"]["messages"][0].content
-            elif "tools" in event:
-                is_tool_used = True
-                tool_msg = str(event["tools"]["messages"][0].content)
-                match = re.search(r"총 칼로리:\s*([0-9.,]+)", tool_msg)
-                if match:
-                    val = float(match.group(1).replace(",", ""))
-                    st.session_state.daily_kcal += val
-                    st.session_state.daily_kcal = round(st.session_state.daily_kcal, 1)
+            # 탐정(LangGraph)에게 수사 의뢰
+            config = {"configurable": {"thread_id": st.session_state.thread_id}}
+            result = nutrition_agent_app.invoke({"messages": [("user", hidden_instruction)]}, config)
+            
+            # 탐정의 전체 대답 가져오기
+            raw_response = result["messages"][-1].content
+            
+            # ---------------------------------------------------------
+            # 4. 정규식을 통한 영양소 추출 및 깔끔한 화면 출력
+            # ---------------------------------------------------------
+            # 숨겨놓은 '[이번 식사: ...]' 포맷을 찾아서 숫자를 뽑아냅니다.
+            match = re.search(r'\[이번 식사:\s*([0-9,.]+)\s*kcal,\s*단백질:\s*([0-9,.]+)\s*g,\s*지방:\s*([0-9,.]+)\s*g,\s*탄수화물:\s*([0-9,.]+)\s*g\]', raw_response)
+            
+            if match:
+                # 쉼표(,)를 제거하고 숫자로 변환하여 누적
+                st.session_state.total_calories += float(match.group(1).replace(',', ''))
+                st.session_state.total_protein += float(match.group(2).replace(',', ''))
+                st.session_state.total_fat += float(match.group(3).replace(',', ''))
+                st.session_state.total_carbs += float(match.group(4).replace(',', ''))
 
-        loading_overlay.empty()
-        st.markdown(final_response)
-        st.session_state.messages.append({"role": "assistant", "content": final_response})
-        
-        if is_tool_used:
-            time.sleep(0.5)
-            st.rerun()
+            # 사용자 화면에 보여줄 때는 지저분한 '[이번 식사: ...]' 꼬리표를 잘라내고 렌더링합니다.
+            clean_response = re.sub(r'\[이번 식사:.*?\]', '', raw_response).strip()
+            
+            st.markdown(clean_response)
+            st.session_state.messages.append({"role": "assistant", "content": clean_response})
+
+    # UI 갱신을 위해 화면을 즉시 새로고침 (바와 대시보드 수치 갱신)
+    st.rerun()
